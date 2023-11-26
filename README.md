@@ -1,6 +1,8 @@
-# Обучение с подкреплением (Reinforcement Learning)
+# Reinforcement Learning
 
-## Инструменты и технологии
+__Language__: English, [Русский](read.md)
+
+## Technologies
 * Pytorch
 * Stable-baselines3
 * Gym
@@ -10,95 +12,95 @@
 ## Pixel Copter
 ![pixel copter](gif/pixel_copter.gif)
 
-__Параметры обучения__:
+__Training Parameters__:
 
-Для обучения была использована глубокая нейросеть Q-обучения, написанная с использованием бибилотеки Pytorch:
+For training, a deep Q-learning neural network was utilized, written using the PyTorch library:
 ```Python
 class Policy(nn.Module):
   def __init__(self, s_size, a_size, h_size):
     super(Policy, self).__init__()
-    # Определение архитектуры нейроннйо сети
+    # Defining the neural network architecture
     self.fc1 = nn.Linear(s_size, h_size)
     self.fc2 = nn.Linear(h_size, h_size*2)
     self.fc3 = nn.Linear(h_size*2, a_size)
     
   def forward(self, x):
-    # Прямой проход через нейронную сеть с функцией активации ReLU
+    # Forward pass through the neural network with ReLU activation function
     x = F.relu(self.fc1(x))
     x = F.relu(self.fc2(x))
     x = self.fc3(x)
-    # Возвращаем распределение вероятностей действий с функцией активации Softmax
+    # Returning the action probability distribution with Softmax activation
     return F.softmax(x, dim=1)
     
   def act(self, state):
-    # Преобразуем состояние в совместимый с нейронной сетью формат и добавляем дополнительное измерение с помощью unsqueeze(0),
-    # что позволяет передавать одиночное состояние через сеть как батч (пакет) из одного состояния
+    # Transforming the state into a format compatible with the neural network
+    # and adding an additional dimension using unsqueeze(0) to pass a single state through the network as a batch of one state
     state = torch.from_numpy(state).float().unsqueeze(0).to(device)
-    # Подсчет вероятностей действий с помощью нейронной сети
+    # Calculating action probabilities using the neural network
     probs = self.forward(state).cpu()
-    # Создаем объект Categorical для работы с распределением вероятностей
+    # Creating a Categorical object to work with the probability distribution
     m = Categorical(probs)
-    # Выбираем действие случайным образом. Вероятность выбора каждого действия соответствует вероятности, предсказанной нейронной сетью
+    # Choosing an action randomly. The probability of choosing each action corresponds to the probability predicted by the neural network
     action = m.sample()
-    # Возвращаем числовое значение действия командой action.item(), так как action является тензором
+    # Returning the numerical value of the action using action.item() since action is a tensor
     return action.item(), m.log_prob(action)
 ```
-Для обучения использовался метод Монте-Карло (Reinforce):
+For training, the Reinforce method, based on Monte Carlo, was used:
 ```Python
-# Функция для обучения с использованием метода Монте-Карло (Reinforce)
+# Function for training using the Reinforce (Monte Carlo) method
 def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every):
 
     scores_deque = deque(maxlen=100)
     scores = []
-    # Начало итерации по эпизодам обучения
+    # Iterating through training episodes
     for i_episode in range(1, n_training_episodes+1):
         saved_log_probs = []
         rewards = []
-        # Начало нового эпизода: сброс среды и получение начального состояния
+        # Starting a new episode: resetting the environment and obtaining the initial state
         state = env.reset()
-        # Итерация внутри текущего эпизода с максимальным количеством шагов max_t
+        # Iterating within the current episode with a maximum number of steps, max_t
         for t in range(max_t):
-            # Получаем действие и его логарифмическую вероятность из политики
+            # Getting action and its logarithmic probability from the policy
             action, log_prob = policy.act(state)
             saved_log_probs.append(log_prob)
-            # Метод step принимает действие (action) в качестве аргумента и возвращает информацию о состоянии среды
+            # The step method takes the action as an argument and returns information about the environment's state
             state, reward, done, _ = env.step(action)
             rewards.append(reward)
-            # Если эпизод завершился, прекращаем итерацию
+            # If the episode is done, break the iteration
             if done:
                 break
         scores_deque.append(sum(rewards))
         scores.append(sum(rewards))
 
-        # returns будет хранить информацию о будущих вознаграждениях в течение определенного количества временных шагов
+        # 'returns' will store information about future rewards over a certain number of time steps
         returns = deque(maxlen=max_t)
         n_steps = len(rewards)
     
         for t in range(n_steps)[::-1]:
             disc_return_t = (returns[0] if len(returns) > 0 else 0)
-            # Вычисляем дисконтированный возврат для текущего шага
+            # Calculating the discounted return for the current step
             returns.appendleft(gamma * disc_return_t + rewards[t])
 
-        # Возвращает наименьшее положительное число
+        # Returns the smallest positive number
         eps = np.finfo(np.float32).eps.item()
 
-        # Нормализация возвратов и подготовка к вычислению потери
+        # Normalizing returns and preparing for loss calculation
         returns = torch.tensor(returns)
         returns = (returns - returns.mean()) / (returns.std() + eps)
 
         policy_loss = []
         for log_prob, disc_return in zip(saved_log_probs, returns):
-            # При вычислении потери для обновления политики агента используется отрицательное значение логарифма вероятностей
-            # (метод Монте-Карло максимизирует ожидаемую награду, поэтому потеря определяется как отрицательная величина, которую нужно минимизировать)
+            # When computing the loss for updating the agent's policy, the negative value of logarithmic probabilities is used
+            # (the Monte Carlo method maximizes the expected reward, so the loss is defined as a negative value to minimize)
             policy_loss.append(-log_prob * disc_return)
-        # Объединяем и суммируем потери
+        # Concatenating and summing the losses
         policy_loss = torch.cat(policy_loss).sum()
 
-        # Обнуляем градиенты всех параметров
+        # Zeroing gradients of all parameters
         optimizer.zero_grad()
-        # Выполняем обратное распространение (backpropagation)
+        # Performing backpropagation
         policy_loss.backward()
-        # Выполняем шаг оптимизации
+        # Performing backpropagation
         optimizer.step()
 
         if i_episode % print_every == 0:
@@ -107,7 +109,7 @@ def reinforce(policy, optimizer, n_training_episodes, max_t, gamma, print_every)
     return scores
 ```
 
-Далее задаём параметры обучения:
+Set the training parameters:
 ```Python
 pixelcopter_hyperparameters = {
     "h_size": 64,
@@ -129,14 +131,14 @@ scores = reinforce(pixelcopter_policy,
                    pixelcopter_hyperparameters["gamma"],
                    1000)
 ```
-__Оценка модели__: ```Mean reward: 27.90 +/- 27.14```
+__Model Evaluation__: ```Mean reward: 27.90 +/- 27.14```
 
-[Hugging Face](https://huggingface.co/kowalsky/Reinforce-PixelCopter): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/Reinforce-PixelCopter): link to the model.
 
 ## Cartpole
 ![Alt text](gif/cart_pole.gif)
 
-Для обучения агента был применен метод Монте-Карло, в рамках которого использовалась нейронная сеть с двумя слоями: входным и выходным. Этот метод был настроен с учетом ряда параметров обучения и гиперпараметров, включая:
+The agent was trained using the Monte Carlo method with a neural network consisting of two layers: input and output. This method was adjusted considering various training and hyperparameters, including:
 ```Python
 cartpole_hyperparameters = {
     "h_size": 16,
@@ -158,16 +160,16 @@ scores = reinforce(cartpole_policy,
                    cartpole_hyperparameters["gamma"],
                    100)
 ```
-__Оценка модели__: ```Mean reward: 500.00 +/- 0.00```
+__Model Evaluation__: ```Mean reward: 500.00 +/- 0.00```
 
-[Hugging Face](https://huggingface.co/kowalsky/Reinforce-CartPole-v1): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/Reinforce-CartPole-v1): link to the model.
 
 ## Lunar Lander
 ![lunar](gif/lunar_lander.gif)
 
-При обучении использовался алгоритм Proximal Policy Optimization (PPO). PPO комбинирует в себе метод обучения с подкреплением на основе оценки значения (Value-based) и метод обучения с подкреплением на основе политики (Policy-based).
+During training, the Proximal Policy Optimization (PPO) algorithm was used. PPO combines both value-based reinforcement learning and policy-based reinforcement learning methods.
 
-__Параметры обучения__:
+__Training Parameters__:
 ```Python
 model = PPO(
     policy = 'MlpPolicy',
@@ -182,16 +184,16 @@ model = PPO(
 
 model.learn(total_timesteps=1000000)
 ```
-__Оценка модели__: ```mean_reward=268.75 +/- 19.63485389637082```
+__Model Evaluation__: ```mean_reward=268.75 +/- 19.63485389637082```
 
-[Hugging Face](https://huggingface.co/kowalsky/LunarLander-v2): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/LunarLander-v2): link to the model.
 
 ## Mountain Car
 ![car](gif/mountain_car.gif)
 
-Изначально для обучения агента был выбран алгоритм Proximal Policy Optimization (PPO). Однако, в ходе исследования и настройки параметров обучения, стало ясно, что выбранные параметры PPO не привели к желаемым результатам. В результате этого опыта было принято решение переключиться на алгоритм DQN (глубокая сеть Q-обучения).
+Initially, the Proximal Policy Optimization (PPO) algorithm was chosen for training the agent. However, during experimentation and fine-tuning of training parameters, it became evident that the selected PPO parameters did not yield the desired results. As a result of this experience, a decision was made to switch to the DQN (Deep Q-Network) algorithm.
 
-__Параметры обучения__:
+__Training Parameters__:
 ```Python
 model = DQN(
       policy="MlpPolicy",
@@ -205,125 +207,124 @@ model = DQN(
 model.learn(total_timesteps=500000)
 ```
 
-__Оценка модели__: ```Mean reward: -163.90 +/- 36.20```
+__Model Evaluation__: ```Mean reward: -163.90 +/- 36.20```
 
-[Hugging Face](https://huggingface.co/kowalsky/MountainCar-v0): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/MountainCar-v0): link to the model.
 
 ## Robot
 ![robot](gif/robot.gif)
 
-Для обучения использовалась модель Actor Advantage Critic (A2C). Модель _субъект-критик_ принимает на вход состояния и генерирует два выхода:
-1. Оценка того, сколько вознаграждения будет получено, начиная с момента текущего состояния, за исключением текущего (уже имеющегося) вознаграждения.
-2. Рекомендацию, какое действие предпринять (политика)
+For training, the Actor Advantage Critic (A2C) model was utilized. The actor-critic model takes states as input and generates two outputs:
 
-__Параметры обучения__:
+1. An estimation of the total future rewards starting from the current state, excluding the current reward already obtained.
+2. A recommendation for the action to take (policy).
+
+__Training Parameters__:
 ```Python
-# Обертка (wrapper) используется для нормализации (стандартизации) как наблюдений (jbservation), так и наград (reward)
+# A wrapper is used for normalizing (standardizing) both observations and rewards.
 env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10.)
 model = A2C(policy="MultiInputPolicy", env=env, verbose=1)
 model.learn(1_000_000)
 ```
 
-__Оценка модели__: ```Mean reward = -0.18 +/- 0.12```
+__Model Evaluation__: ```Mean reward = -0.18 +/- 0.12```
 
-[Hugging Face](https://huggingface.co/kowalsky/a2c-PandaReachDense-v3): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/a2c-PandaReachDense-v3): link to the model.
 
 ## Space Invaders
 ![space invaders](gif/space_invaders.gif)
 
-Для обучения была использована глубокая нейросеть Q-обучения библиотеки Stable-Baselines3. Обучение проводилось на окружении SpaceInvadersNoFrameskip-v4 с использованием алгоритма DQN:
+For training, a deep Q-learning neural network from the Stable-Baselines3 library was used. Training was conducted on the SpaceInvadersNoFrameskip-v4 environment using the DQN algorithm:
 ```Python
 !python -m rl_zoo3.train --algo dqn  --env SpaceInvadersNoFrameskip-v4 -f logs/ -c dqn.yml
 ```
-__Оценка модели__: ```Mean reward: 490.00 +/- 137.33```
+__Model Evaluation__: ```Mean reward: 490.00 +/- 137.33```
 
-[Hugging Face](https://huggingface.co/kowalsky/SpaceInvaders-v4): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/SpaceInvaders-v4): link to the model.
 
 ## Frozen Lake
 ![frozen lake](gif/frozen_lake.gif)
 
-Для обучения агента использовался метод обучения Q-функции:
+For training the agent, the Q-learning method for learning the Q-function was utilized:
 ```Python
-# Инициализация пустой таблицы размером: env.observation_space.n x env.action_space.n
+# Initialization of an empty table with the size: env.observation_space.n x env.action_space.n.
 def initialize_q_table(state_space, action_space):
     Qtable = np.zeros((state_space, action_space))
     return Qtable
 
 Qtable_frozenlake = initialize_q_table(state_space, action_space)
 
-# Жадная стратегия: агент всегда выбирает действие с наивысшим  занчением Q-функции
+# Greedy strategy: the agent always chooses the action with the highest Q-value
 def greedy_policy(Qtable, state):
     action = np.argmax(Qtable[state][:])
     return action
 
-# Эпсилон-жадная стратегия: комбинирует жадное поведение (exploitation) и исследование (exploration)
+# Epsilon-greedy strategy: combines greedy exploitation and exploration
 def epsilon_greedy_policy(Qtable, state, epsilon):
-    # Генерируем случайное число между 0 и 1
+    # Generate a random number between 0 and 1
     random_num = random.uniform(0,1)
-    # Если случайное число больше epsilon, агент придерживается жадной стратегии (эксплуатации)
+    # If the random number is greater than epsilon, the agent follows the greedy strategy (exploitation)
     if random_num > epsilon:
         action = greedy_policy(Qtable, state)
-    # В противном случае агент исследует (exploration) и выбирает случайное действие из пространства действий среды
+    # Otherwise, the agent explores and chooses a random action from the environment's action space
     else:
         action = env.action_space.sample()
 
     return action
 ```
-__Параметры обучения__:
+__Training Parameters__:
 
 ```Python
 n_training_episodes = 10000 
 learning_rate = 0.7
 n_eval_episodes = 100
 env_id = "FrozenLake-v1"
-max_steps = 99               # максимальное количество шагов за эпизод
-gamma = 0.95                 # коэффициент дисконтирования
+max_steps = 99               # Maximum number of steps per episode
+gamma = 0.95                 # The discount factor
 eval_seed = []
 
-max_epsilon = 1.0            # Вероятность исследования в начале обучения
-min_epsilon = 0.05           # Минимальная вероятность исследования
-decay_rate = 0.0005          # Экспоненциальная скорость убывания вероятности исследования
+max_epsilon = 1.0            # The initial exploration probability at the start of training
+min_epsilon = 0.05           # The minimum exploration probability
+decay_rate = 0.0005          # The rate at which the exploration probability decreases exponentially over time during training
 ```
-__Функция обучения__:
+__Train function__:
 ```Python
 def train(n_training_episodes, min_epsilon, max_epsilon, decay_rate, env, max_steps, Qtable):
-    # Использование библиотеки tqdm для отслеживания прогресса
+    # Using the tqdm library to track progress
     for episode in tqdm(range(n_training_episodes)):
-        # Уменьшаем epsilon для уменьшения вероятности исследования
+        # Decreasing epsilon to reduce exploration probability
         epsilon = min_epsilon + (max_epsilon - min_epsilon)*np.exp(-decay_rate*episode)
-        # Сбрасываем среду в начальное состояние
+        # Resetting the environment to the initial state
         state, info = env.reset()
         step = 0
-        # Эпизод завершился
         terminated = False
-        # Эпизод прервался
         truncated = False
 
         for step in range(max_steps):
-        # Выбираем действие с использованием эпсилон-жадной стратегии
+        # Choosing an action using an epsilon-greedy strategy
         action = epsilon_greedy_policy(Qtable, state, epsilon)
 
-        # Метод принимает действие и возвращает состояние среды
+        # The method takes an action and returns the environment's state
         new_state, reward, terminated, truncated, info = env.step(action)
 
-        # Обновляем значения таблицы
+        # Updating the table values
         Qtable[state][action] = Qtable[state][action] + learning_rate * (reward + gamma * np.max(Qtable[new_state]) - Qtable[state][action])
 
         if terminated or truncated:
             break
 
-        # Задаём новое состояние
+        # Setting the new state
         state = new_state
     return Qtable
 ```
-__Оценка модели__: ```Mean reward: 1.00 +/- 0.00```
+__Model Evaluation__: ```Mean reward: 1.00 +/- 0.00```
 
-[Hugging Face](https://huggingface.co/kowalsky/q-FrozenLake-v1-4x4-noSlippery): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/q-FrozenLake-v1-4x4-noSlippery): link to the model.
 
 ## Taxi
 ![taxi](gif/taxi.gif)
 
-При обучении данного агента также использовался метод обучения Q-функции, но с другими параметрами:
+When training this agent, the Q-learning method was also used, but with different parameters:
 ```Python
 n_training_episodes = 25000
 learning_rate = 0.7
@@ -338,8 +339,8 @@ max_epsilon = 1.0
 min_epsilon = 0.05
 decay_rate = 0.005
 ```
-__Оценка модели__: ```Mean reward: 7.48 +/- 2.73```
+__Model Evaluation__: ```Mean reward: 7.48 +/- 2.73```
 
-[Hugging Face](https://huggingface.co/kowalsky/Taxi-v3): ссылка на модель.
+[Hugging Face](https://huggingface.co/kowalsky/Taxi-v3): link to the model.
 ____
-__Обучение всех моделей было проведено в сервисе Google Colab__
+__All model training was conducted using the Google Colab service__

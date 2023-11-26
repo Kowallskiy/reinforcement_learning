@@ -1,5 +1,7 @@
 # Обучение с подкреплением (Reinforcement Learning)
 
+Language: [English](README.md), Русский
+
 ## Инструменты и технологии
 * Pytorch
 * Stable-baselines3
@@ -17,7 +19,7 @@ __Параметры обучения__:
 class Policy(nn.Module):
   def __init__(self, s_size, a_size, h_size):
     super(Policy, self).__init__()
-    # Определение архитектуры нейроннйо сети
+    # Определение архитектуры нейронной сети
     self.fc1 = nn.Linear(s_size, h_size)
     self.fc2 = nn.Linear(h_size, h_size*2)
     self.fc3 = nn.Linear(h_size*2, a_size)
